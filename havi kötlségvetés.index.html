@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="hu" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Havi Költségvetés Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#111827',
+                            950: '#030712',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS for reading files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- ExcelJS for generating XLSX templates with Data Validation (dropdowns) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f1f5f9;
+        }
+        .kpi-card {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+            border: 1px solid rgba(51, 65, 85, 0.6);
+            backdrop-filter: blur(12px);
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            backdrop-filter: blur(8px);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body class="p-3 sm:p-6 md:p-8 min-h-screen text-slate-100 selection:bg-emerald-500 selection:text-white">
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <!-- Header -->
+        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-5 border-b border-slate-800">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-emerald-500/20">
+                    <i class="fa-solid font-bold fa-wallet"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-white flex items-center gap-2">
+                        Havi Költségvetés <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">Pro v2.6</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Pénzügyek nyomon követése, kiadások megoszlása és előfizetés-kezelő</p>
+                </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <button onclick="loadDemoData()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> Demo adatok
+                </button>
+                <button onclick="openImportModal()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-file-excel text-emerald-400"></i> Excel / CSV Import
+                </button>
+                <button onclick="exportData()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-download text-indigo-400"></i> Export
+                </button>
+                <button onclick="openResetModal()" class="px-3 py-2 bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-300 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-trash-can text-red-400"></i> Törlés
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Income KPI -->
+            <div class="kpi-card p-5 rounded-2xl shadow-xl relative overflow-hidden group">
+                <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity text-emerald-400 text-7xl">
+                    <i class="fa-solid fa-arrow-down-left"></i>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Összes Bevétel (Tény)</span>
+                    <span class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-plus"></i>
+                    </span>
+                </div>
+                <div id="kpi-income" class="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">0 Ft</div>
+                <div class="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-800/80 flex justify-between">
+                    <span>Tranzakciók száma:</span>
+                    <strong class="text-slate-300" id="kpi-income-count">0 db</strong>
+                </div>
+            </div>
+
+            <!-- Expense KPI -->
+            <div class="kpi-card p-5 rounded-2xl shadow-xl relative overflow-hidden group">
+                <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity text-amber-400 text-7xl">
+                    <i class="fa-solid fa-arrow-up-right"></i>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Összes Kiadás (Tény)</span>
+                    <span class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-minus"></i>
+                    </span>
+                </div>
+                <div id="kpi-expense" class="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">0 Ft</div>
+                <div class="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-800/80 flex justify-between">
+                    <span>Előfizetések aránya:</span>
+                    <strong class="text-slate-300" id="kpi-sub-share-pct">0%</strong>
+                </div>
+            </div>
+
+            <!-- Net Balance KPI -->
+            <div class="kpi-card p-5 rounded-2xl shadow-xl relative overflow-hidden group">
+                <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity text-indigo-400 text-7xl">
+                    <i class="fa-solid fa-piggy-bank"></i>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Nettó Egyenleg</span>
+                    <span class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-scale-balanced"></i>
+                    </span>
+                </div>
+                <div id="kpi-savings" class="text-2xl sm:text-3xl font-black text-indigo-300 tracking-tight">0 Ft</div>
+                <div class="flex justify-between items-center text-xs text-slate-400 mt-2 pt-2 border-t border-slate-800/80">
+                    <span>Megtakarítási ráta:</span>
+                    <span id="kpi-rate" class="font-bold text-slate-200">0.0%</span>
+                </div>
+            </div>
+
+            <!-- Subscriptions Total KPI -->
+            <div class="kpi-card p-5 rounded-2xl shadow-xl relative overflow-hidden group">
+                <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity text-purple-400 text-7xl">
+                    <i class="fa-solid fa-repeat"></i>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Havi Előfizetések</span>
+                    <span class="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                    </span>
+                </div>
+                <div id="kpi-sub-total" class="text-2xl sm:text-3xl font-black text-purple-300 tracking-tight">0 Ft</div>
+                <div id="kpi-sub-count" class="text-xs font-medium text-slate-400 mt-2 pt-2 border-t border-slate-800/80 flex justify-between items-center">
+                    <span>Aktív előfizetések:</span>
+                    <strong class="text-purple-300" id="sub-active-badge">0 db</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-panel p-4 rounded-2xl">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-amber-400"></i> Gyors rögzítés
+                </h3>
+                <span class="text-[11px] text-slate-500">Egy kattintásos gyakori tételek</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="addPreset('income', 'Fizetés', 550000, 'Havi fizetés')" class="px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 hover:bg-emerald-900/60 text-emerald-300 text-xs font-medium transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus text-[10px]"></i> Fizetés (+550k Ft)
+                </button>
+                <button onclick="addPreset('income', 'Egyéb bevétel', 50000, 'Mellékes / Bónusz')" class="px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 hover:bg-emerald-900/60 text-emerald-300 text-xs font-medium transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus text-[10px]"></i> Egyéb Bevétel (+50k Ft)
+                </button>
+                <button onclick="addPreset('expense', 'Lakbér / Törlesztő', 180000, 'Havi lakbér')" class="px-3 py-1.5 rounded-xl bg-amber-950/40 border border-amber-800/50 hover:bg-amber-900/60 text-amber-300 text-xs font-medium transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-minus text-[10px]"></i> Lakbér (-180k Ft)
+                </button>
+                <button onclick="addPreset('expense', 'Rezsi', 45000, 'Villany, gáz, net, víz')" class="px-3 py-1.5 rounded-xl bg-amber-950/40 border border-amber-800/50 hover:bg-amber-900/60 text-amber-300 text-xs font-medium transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-minus text-[10px]"></i> Rezsi (-45k Ft)
+                </button>
+                <button onclick="addPreset('expense', 'Élelmiszer', 25000, 'Nagybevásárlás')" class="px-3 py-1.5 rounded-xl bg-amber-950/40 border border-amber-800/50 hover:bg-amber-900/60 text-amber-300 text-xs font-medium transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-minus text-[10px]"></i> Élelmiszer (-25k Ft)
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left Column: Form (4 cols) -->
+            <div class="lg:col-span-4 space-y-6">
+
+                <!-- Transaction Input Form -->
+                <div class="glass-panel p-6 rounded-2xl relative shadow-xl">
+                    <div class="flex items-center justify-between mb-5">
+                        <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-square-plus text-emerald-400"></i> Új Tranzakció
+                        </h2>
+                        <span class="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded-md">Rögzítés</span>
+                    </div>
+
+                    <form id="tx-form" onsubmit="addTransaction(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1.5">Típus</label>
+                            <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900/80 rounded-xl border border-slate-800">
+                                <button type="button" id="btn-type-expense" onclick="setType('expense')" class="py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-amber-500 text-slate-950 shadow">
+                                    <i class="fa-solid fa-arrow-trend-down"></i> Kiadás
+                                </button>
+                                <button type="button" id="btn-type-income" onclick="setType('income')" class="py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white">
+                                    <i class="fa-solid fa-arrow-trend-up"></i> Bevétel
+                                </button>
+                            </div>
+                            <input type="hidden" id="tx-type" value="expense">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Dátum</label>
+                            <input type="date" id="tx-date" required class="w-full bg-slate-900 border border-slate-700/70 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Kategória</label>
+                            <select id="tx-category" class="w-full bg-slate-900 border border-slate-700/70 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer">
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Összeg (Ft)</label>
+                            <div class="relative">
+                                <input type="number" id="tx-amount" required min="1" placeholder="pl. 15000" class="w-full bg-slate-900 border border-slate-700/70 rounded-xl p-2.5 pr-12 text-sm text-slate-100 font-semibold focus:outline-none focus:border-emerald-500 transition-colors">
+                                <span class="absolute right-3 top-2.5 text-xs font-bold text-slate-500">HUF</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Leírás / Megjegyzés</label>
+                            <input type="text" id="tx-desc" placeholder="pl. Spar bevásárlás, Tankolás" class="w-full bg-slate-900 border border-slate-700/70 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors">
+                        </div>
+
+                        <button type="submit" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 active:scale-[0.99] text-slate-950 font-extrabold rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-check"></i> Tranzakció Rögzítése
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+
+            <div class="lg:col-span-8 space-y-6">
+
+                <!-- Expense Distribution Panel -->
+                <div class="glass-panel p-6 rounded-2xl shadow-xl space-y-5">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                                <i class="fa-solid fa-chart-pie text-amber-400"></i> Kiadások Megoszlása
+                            </h2>
+                            <p class="text-xs text-slate-400">Mire költesz ebben a hónapban? (Kategória szerinti megoszlás)</p>
+                        </div>
+                        <span id="total-expense-badge" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono font-bold">Összesen: 0 Ft</span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="text-xs font-medium text-slate-400 flex justify-between">
+                            <span>Arányos megoszlás</span>
+                            <span id="category-count-label">0 kategória</span>
+                        </div>
+                        <div id="stacked-expense-bar" class="w-full bg-slate-900 h-4 rounded-full overflow-hidden flex p-0.5 border border-slate-800">
+                        </div>
+                    </div>
+
+                    <div id="category-breakdown-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-2">
+                    </div>
+                </div>
+
+                <!-- Subscriptions Management Panel -->
+                <div class="glass-panel p-6 rounded-2xl shadow-xl space-y-5 border-l-4 border-l-purple-500">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                                <i class="fa-solid fa-repeat text-purple-400"></i> Előfizetés Kezelő (Subscriptions)
+                            </h2>
+                            <p class="text-xs text-slate-400">Rendszeres havi előfizetések, streaming, tagságok és digitális szolgáltatások</p>
+                        </div>
+                        <button onclick="toggleAddSubModal()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-md">
+                            <i class="fa-solid fa-plus text-[10px]"></i> Új előfizetés
+                        </button>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div id="subscriptions-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row justify-between items-center bg-purple-950/30 border border-purple-800/40 p-3.5 rounded-xl text-xs gap-3">
+                            <div class="flex items-center gap-2 text-purple-300">
+                                <i class="fa-solid fa-circle-info text-purple-400"></i>
+                                <span>Éves szinten az előfizetéseid ára: <strong id="annual-sub-cost" class="text-white font-mono">0 Ft</strong></span>
+                            </div>
+                            <button onclick="logAllActiveSubsToTransactions()" class="px-3 py-1.5 bg-slate-800 hover:bg-purple-900/60 border border-purple-700/50 text-purple-200 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5">
+                                <i class="fa-solid fa-file-invoice-dollar text-purple-400"></i> Rögzítés a kiadásokhoz
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl shadow-xl space-y-4">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                                <i class="fa-solid fa-list-check text-emerald-400"></i> Tranzakciós Napló
+                            </h2>
+                            <p class="text-xs text-slate-400">Rögzített bevételek és kiadások részletei</p>
+                        </div>
+
+                        <div class="flex items-center gap-2 w-full sm:w-auto">
+                            <div class="relative flex-1 sm:w-48">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-500"></i>
+                                <input type="text" id="table-search" oninput="render()" placeholder="Keresés..." class="w-full bg-slate-900 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                            </div>
+                            <select id="table-filter" onchange="render()" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-emerald-500">
+                                <option value="all">Mind</option>
+                                <option value="income">Bevétel</option>
+                                <option value="expense">Kiadás</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto custom-scrollbar max-h-96">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead class="sticky top-0 bg-slate-900/95 text-slate-400 uppercase tracking-wider border-b border-slate-800 font-semibold z-10">
+                                <tr>
+                                    <th class="py-3 px-3">Dátum</th>
+                                    <th class="py-3 px-3">Típus</th>
+                                    <th class="py-3 px-3">Kategória</th>
+                                    <th class="py-3 px-3">Leírás</th>
+                                    <th class="py-3 px-3 text-right">Összeg</th>
+                                    <th class="py-3 px-3 text-center">Művelet</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tx-table-body" class="divide-y divide-slate-800/60 font-medium">
+                            </tbody>
+                        </table>
+
+                        <div id="empty-state" class="text-center py-12 space-y-3">
+                            <div class="w-12 h-12 rounded-full bg-slate-800/60 text-slate-500 flex items-center justify-center mx-auto text-lg">
+                                <i class="fa-solid fa-receipt"></i>
+                            </div>
+                            <div class="text-slate-400 font-medium">Még nincs rögzített tranzakció</div>
+                            <p class="text-xs text-slate-500 max-w-xs mx-auto">Használd a bal oldali űrlapot vagy a Gyors rögzítés gombokat!</p>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center text-xs text-slate-500 pt-2 border-t border-slate-800">
+                        <span id="tx-count-label">0 tranzakció</span>
+                        <span class="text-[11px] italic">Mentés: localStorage</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Add Subscription Modal -->
+        <div id="sub-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+            <div class="glass-panel max-w-md w-full p-6 rounded-2xl border border-purple-500/30 shadow-2xl space-y-4">
+                <div class="flex items-center justify-between text-purple-300">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-repeat text-purple-400"></i> Új Előfizetés Hozzáadása
+                    </h3>
+                    <button onclick="toggleAddSubModal()" class="text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                
+                <form id="sub-form" onsubmit="addNewSubscription(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Előfizetés Neve</label>
+                        <input type="text" id="sub-name" required placeholder="pl. Spotify, Netflix, Fitness pass" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Havi Díj (Ft)</label>
+                        <input type="number" id="sub-cost" required min="1" placeholder="pl. 2490" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Kategória</label>
+                        <select id="sub-category" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500">
+                            <option value="Streaming / Szórakozás">Streaming / Szórakozás</option>
+                            <option value="Előfizetés / Szoftver">Előfizetés / Szoftver</option>
+                            <option value="Sport / Egészség">Sport / Egészség</option>
+                            <option value="Rezsi / Szolgáltatás">Rezsi / Szolgáltatás</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Levonás napja (a hónapban)</label>
+                        <input type="number" id="sub-day" min="1" max="31" value="10" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500">
+                    </div>
+                    <div class="flex justify-end gap-2 pt-3">
+                        <button type="button" onclick="toggleAddSubModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold">Mégse</button>
+                        <button type="submit" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/30">Mentés</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Excel / CSV Bulk Import Modal with Enhanced Template Generator -->
+        <div id="import-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+            <div class="glass-panel max-w-2xl w-full p-6 rounded-2xl border border-emerald-500/30 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+                <div class="flex items-center justify-between text-emerald-300 pb-2 border-b border-slate-800">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-file-excel text-emerald-400"></i> Excel / CSV Tömeges Importálás
+                    </h3>
+                    <button onclick="closeImportModal()" class="text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-3 overflow-y-auto custom-scrollbar p-1">
+                    <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2">
+                        <div class="font-bold text-slate-200 flex items-center justify-between">
+                            <span><i class="fa-solid fa-circle-info text-emerald-400 mr-1"></i> Elvárt oszlopfejlécek az Excel/CSV-ben:</span>
+                            <button onclick="downloadExcelTemplate()" class="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1.5 text-xs bg-emerald-950/60 hover:bg-emerald-900/80 px-2.5 py-1 rounded-lg border border-emerald-800/60 transition-all shadow-sm">
+                                <i class="fa-solid fa-file-arrow-down text-amber-400"></i> Legördülős Excel minta letöltése
+                            </button>
+                        </div>
+                        <p class="text-slate-400 text-[11px] leading-relaxed">
+                            <code class="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-300">Dátum</code> | 
+                            <code class="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-300">Típus</code> (bevétel / kiadás legördülő) | 
+                            <code class="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-300">Kategória</code> (legördülő lista) | 
+                            <code class="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-300">Összeg</code> | 
+                            <code class="bg-slate-950 px-1.5 py-0.5 rounded text-emerald-300">Leírás</code>
+                        </p>
+                    </div>
+
+                    <!-- File Drop / Select Area -->
+                    <div id="drop-zone" onclick="document.getElementById('excel-file-input').click()" class="border-2 border-dashed border-slate-700 hover:border-emerald-500/80 bg-slate-900/50 hover:bg-slate-900/80 p-6 rounded-xl text-center cursor-pointer transition-all space-y-2">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl text-emerald-400 mb-1"></i>
+                        <div class="text-xs font-semibold text-slate-200">Kattints a fájl kiválasztásához vagy húzd ide!</div>
+                        <p class="text-[11px] text-slate-500">Támogatott formátumok: .xlsx, .xls, .csv</p>
+                        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" onchange="handleFileSelect(event)" class="hidden">
+                    </div>
+
+                    <!-- Preview Container -->
+                    <div id="import-preview-container" class="hidden space-y-3 pt-2">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="font-bold text-slate-200" id="import-row-count">0 sor beolvasva</span>
+                            <span class="text-slate-400 text-[11px]" id="import-valid-count">0 Ft</span>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto custom-scrollbar border border-slate-800 rounded-xl bg-slate-900/90">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-800 text-slate-400 sticky top-0">
+                                    <tr>
+                                        <th class="p-2">Dátum</th>
+                                        <th class="p-2">Típus</th>
+                                        <th class="p-2">Kategória</th>
+                                        <th class="p-2">Leírás</th>
+                                        <th class="p-2 text-right">Összeg</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="import-preview-tbody" class="divide-y divide-slate-800 text-slate-300">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                    <button type="button" onclick="closeImportModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold">Mégse</button>
+                    <button type="button" id="btn-confirm-import" onclick="confirmBulkImport()" disabled class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-import"></i> Tranzakciók Bekerülése
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Delete Confirmation Modal -->
+        <div id="reset-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+            <div class="glass-panel max-w-md w-full p-6 rounded-2xl border border-red-500/30 shadow-2xl space-y-4">
+                <div class="flex items-center gap-3 text-red-400">
+                    <div class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-lg">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-white">Minden adat törlése?</h3>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    Biztosan törölni szeretnéd az összes eddig rögzített tranzakciót és előfizetést? Ez a művelet nem vonható vissza.
+                </p>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button onclick="closeResetModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all">
+                        Mégse
+                    </button>
+                    <button onclick="confirmResetData()" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-red-600/30">
+                        Igen, töröld mindet
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification Container -->
+        <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+    </div>
+
+    <script>
+        const CATEGORY_COLORS = [
+            '#f59e0b', // Amber
+            '#6366f1', // Indigo
+            '#ec4899', // Pink
+            '#10b981', // Emerald
+            '#3b82f6', // Blue
+            '#8b5cf6', // Purple
+            '#f97316', // Orange
+            '#14b8a6', // Teal
+            '#ef4444'  // Red
+        ];
+
+        const CATEGORIES = {
+            expense: [
+                'Lakbér / Törlesztő',
+                'Rezsi',
+                'Biztosítások',
+                'Élelmiszer',
+                'Szórakozás / Hobbi',
+                'Előfizetés / Szoftver',
+                'Közlekedés / Tankolás',
+                'Egyéb kiadás'
+            ],
+            income: [
+                'Fizetés',
+                'Egyéb bevétel',
+                'Befektetés / Osztalék'
+            ]
+        };
+
+        const DEFAULT_SUBSCRIPTIONS = [
+            { id: 'sub_1', name: 'Netflix 4K', cost: 5090, category: 'Streaming / Szórakozás', day: 5, active: true, icon: 'fa-tv' },
+            { id: 'sub_2', name: 'Spotify Duo', cost: 2490, category: 'Streaming / Szórakozás', day: 12, active: true, icon: 'fa-music' },
+            { id: 'sub_3', name: 'iCloud 200GB', cost: 1290, category: 'Előfizetés / Szoftver', day: 1, active: true, icon: 'fa-cloud' },
+            { id: 'sub_4', name: 'Edzőterem Bérlet', cost: 16500, category: 'Sport / Egészség', day: 1, active: true, icon: 'fa-dumbbell' },
+            { id: 'sub_5', name: 'YouTube Premium', cost: 2390, category: 'Streaming / Szórakozás', day: 18, active: true, icon: 'fa-youtube' }
+        ];
+
+        let transactions = JSON.parse(localStorage.getItem('havi_koltseg_txs')) || [];
+        let subscriptions = JSON.parse(localStorage.getItem('havi_koltseg_subs')) || DEFAULT_SUBSCRIPTIONS;
+        let currentType = 'expense';
+
+        document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const isSuccess = type === 'success';
+            const bgColor = isSuccess ? 'bg-slate-900 border-emerald-500/50 text-emerald-300' : 'bg-slate-900 border-amber-500/50 text-amber-300';
+            const icon = isSuccess ? 'fa-circle-check text-emerald-400' : 'fa-circle-info text-amber-400';
+
+            toast.className = `glass-panel border p-3 px-4 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2.5 transform transition-all duration-300 translate-y-4 opacity-0 pointer-events-auto ${bgColor}`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-4', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-4', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function setType(type) {
+            currentType = type;
+            document.getElementById('tx-type').value = type;
+            
+            const btnExpense = document.getElementById('btn-type-expense');
+            const btnIncome = document.getElementById('btn-type-income');
+
+            if (type === 'expense') {
+                btnExpense.className = "py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-amber-500 text-slate-950 shadow";
+                btnIncome.className = "py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white";
+            } else {
+                btnIncome.className = "py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-emerald-500 text-slate-950 shadow";
+                btnExpense.className = "py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white";
+            }
+
+            updateCategories();
+        }
+
+        function updateCategories() {
+            const catSelect = document.getElementById('tx-category');
+            catSelect.innerHTML = '';
+            
+            CATEGORIES[currentType].forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                catSelect.appendChild(opt);
+            });
+        }
+
+        function addTransaction(e) {
+            e.preventDefault();
+            const type = document.getElementById('tx-type').value;
+            const category = document.getElementById('tx-category').value;
+            const amount = parseInt(document.getElementById('tx-amount').value);
+            const desc = document.getElementById('tx-desc').value.trim() || '-';
+            const date = document.getElementById('tx-date').value || new Date().toISOString().split('T')[0];
+
+            if (isNaN(amount) || amount <= 0) {
+                showToast('Érvényes összeget adj meg!', 'warning');
+                return;
+            }
+
+            transactions.unshift({
+                id: Date.now() + Math.random(),
+                date,
+                type,
+                category,
+                amount,
+                desc
+            });
+
+            saveAndRender();
+            document.getElementById('tx-amount').value = '';
+            document.getElementById('tx-desc').value = '';
+            showToast('Tranzakció sikeresen rögzítve!');
+        }
+
+        function addPreset(type, category, amount, desc) {
+            const date = new Date().toISOString().split('T')[0];
+            transactions.unshift({
+                id: Date.now() + Math.random(),
+                date,
+                type,
+                category,
+                amount,
+                desc
+            });
+            saveAndRender();
+            showToast(`Sikeres rögzítés: ${category} (${amount.toLocaleString('hu-HU')} Ft)`);
+        }
+
+        function deleteTransaction(id) {
+            transactions = transactions.filter(tx => tx.id !== id);
+            saveAndRender();
+            showToast('Tétel törölve.', 'warning');
+        }
+
+        function toggleSubscriptionStatus(subId) {
+            subscriptions = subscriptions.map(sub => {
+                if (sub.id === subId) {
+                    return { ...sub, active: !sub.active };
+                }
+                return sub;
+            });
+            saveAndRender();
+            showToast('Előfizetés állapota frissítve.');
+        }
+
+        function deleteSubscription(subId) {
+            subscriptions = subscriptions.filter(sub => sub.id !== subId);
+            saveAndRender();
+            showToast('Előfizetés eltávolítva.', 'warning');
+        }
+
+        function toggleAddSubModal() {
+            const modal = document.getElementById('sub-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        function addNewSubscription(e) {
+            e.preventDefault();
+            const name = document.getElementById('sub-name').value.trim();
+            const cost = parseInt(document.getElementById('sub-cost').value);
+            const category = document.getElementById('sub-category').value;
+            const day = parseInt(document.getElementById('sub-day').value) || 1;
+
+            if (!name || isNaN(cost) || cost <= 0) {
+                showToast('Érvényes nevet és összeget adj meg!', 'warning');
+                return;
+            }
+
+            subscriptions.push({
+                id: 'sub_' + Date.now(),
+                name,
+                cost,
+                category,
+                day,
+                active: true,
+                icon: 'fa-credit-card'
+            });
+
+            saveAndRender();
+            toggleAddSubModal();
+            document.getElementById('sub-form').reset();
+            showToast('Új előfizetés hozzáadva!');
+        }
+
+        function logAllActiveSubsToTransactions() {
+            const activeSubs = subscriptions.filter(s => s.active);
+            if (activeSubs.length === 0) {
+                showToast('Nincs aktív előfizetés rögzítésre!', 'warning');
+                return;
+            }
+
+            const date = new Date().toISOString().split('T')[0];
+            activeSubs.forEach(sub => {
+                transactions.unshift({
+                    id: Date.now() + Math.random(),
+                    date,
+                    type: 'expense',
+                    category: 'Előfizetés / Szoftver',
+                    amount: sub.cost,
+                    desc: `Előfizetés: ${sub.name}`
+                });
+            });
+
+            saveAndRender();
+            showToast(`${activeSubs.length} db aktív előfizetés rögzítve a tranzakciókhoz!`);
+        }
+
+        function openResetModal() {
+            document.getElementById('reset-modal').classList.remove('hidden');
+        }
+
+        function closeResetModal() {
+            document.getElementById('reset-modal').classList.add('hidden');
+        }
+
+        async function downloadExcelTemplate() {
+            try {
+                showToast('Sablon generálása legördülő menükkel...', 'info');
+
+                const workbook = new ExcelJS.Workbook();
+                const worksheet = workbook.addWorksheet('Tranzakciók');
+
+                // Define headers and column formatting
+                worksheet.columns = [
+                    { header: 'Dátum', key: 'date', width: 16 },
+                    { header: 'Típus', key: 'type', width: 16 },
+                    { header: 'Kategória', key: 'category', width: 28 },
+                    { header: 'Összeg', key: 'amount', width: 18 },
+                    { header: 'Leírás', key: 'desc', width: 36 }
+                ];
+
+                // Style Header row
+                const headerRow = worksheet.getRow(1);
+                headerRow.height = 26;
+                headerRow.font = { bold: true, color: { argb: 'FFFFFF' }, name: 'Calibri', size: 11 };
+                headerRow.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: '059669' } // Emerald green header
+                };
+                headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+                // Add sample data rows
+                const today = new Date().toISOString().split('T')[0];
+                const sampleRows = [
+                    { date: today, type: 'bevétel', category: 'Fizetés', amount: 550000, desc: 'Havi fő munkabér' },
+                    { date: today, type: 'bevétel', category: 'Egyéb bevétel', amount: 50000, desc: 'Mellékes projekt' },
+                    { date: today, type: 'kiadás', category: 'Lakbér / Törlesztő', amount: 180000, desc: 'Havi lakbér' },
+                    { date: today, type: 'kiadás', category: 'Rezsi', amount: 45000, desc: 'Villany és gáz számla' },
+                    { date: today, type: 'kiadás', category: 'Élelmiszer', amount: 28500, desc: 'Heti nagybevásárlás' }
+                ];
+
+                sampleRows.forEach(row => worksheet.addRow(row));
+
+                // Number formatting for amount
+                worksheet.getColumn('amount').numFmt = '#,##0" Ft"';
+
+                // Data Validation: Dropdown list for Type column (B2:B500)
+                worksheet.dataValidations.add('B2:B500', {
+                    type: 'list',
+                    allowBlank: true,
+                    formulae: ['"bevétel, kiadás"'],
+                    showErrorMessage: true,
+                    errorTitle: 'Érvénytelen Típus',
+                    error: 'Kérjük válassz a legördülő menüből: bevétel vagy kiadás'
+                });
+
+                // Data Validation: Dropdown list for Category column (C2:C500)
+                const allCategories = [
+                    ...CATEGORIES.income,
+                    ...CATEGORIES.expense
+                ];
+                const categoryListStr = `"${allCategories.join(',')}"`;
+
+                worksheet.dataValidations.add('C2:C500', {
+                    type: 'list',
+                    allowBlank: true,
+                    formulae: [categoryListStr],
+                    showErrorMessage: true,
+                    errorTitle: 'Érvénytelen Kategória',
+                    error: 'Kérjük válassz a legördülő menüből a megadott kategóriák közül!'
+                });
+
+                // Generate XLSX buffer and trigger download
+                const buffer = await workbook.xlsx.writeBuffer();
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Minta_Havi_Koltsegvetes_Import_Legordulos.xlsx';
+                a.click();
+                window.URL.revokeObjectURL(url);
+
+                showToast('Minta Excel sikeresen letöltve legördülő menükkel!');
+            } catch (err) {
+                console.error(err);
+                showToast('Hiba az Excel sablon előállításakor!', 'warning');
+            }
+        }
+
+        let parsedImportData = [];
+
+        function openImportModal() {
+            parsedImportData = [];
+            document.getElementById('import-preview-container').classList.add('hidden');
+            document.getElementById('btn-confirm-import').disabled = true;
+            document.getElementById('excel-file-input').value = '';
+            document.getElementById('import-modal').classList.remove('hidden');
+        }
+
+        function closeImportModal() {
+            document.getElementById('import-modal').classList.add('hidden');
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            processImportFile(file);
+        }
+
+        function processImportFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                    parsedImportData = [];
+                    json.forEach(row => {
+                        const normalizedRow = {};
+                        Object.keys(row).forEach(k => {
+                            normalizedRow[k.trim().toLowerCase()] = row[k];
+                        });
+
+                        const rawDate = normalizedRow['dátum'] || normalizedRow['datum'] || normalizedRow['date'] || new Date().toISOString().split('T')[0];
+                        let formattedDate = new Date().toISOString().split('T')[0];
+                        if (rawDate instanceof Date) {
+                            formattedDate = rawDate.toISOString().split('T')[0];
+                        } else if (typeof rawDate === 'string' && rawDate.trim()) {
+                            formattedDate = rawDate.trim();
+                        }
+
+                        const rawType = (normalizedRow['típus'] || normalizedRow['tipus'] || normalizedRow['type'] || 'kiadás').toString().toLowerCase();
+                        const type = (rawType.includes('bev') || rawType.includes('inc')) ? 'income' : 'expense';
+
+                        const category = (normalizedRow['kategória'] || normalizedRow['kategoria'] || normalizedRow['category'] || (type === 'income' ? 'Egyéb bevétel' : 'Egyéb kiadás')).toString().trim();
+                        
+                        const rawAmount = normalizedRow['összeg'] || normalizedRow['osszeg'] || normalizedRow['amount'] || 0;
+                        const amount = Math.abs(parseInt(rawAmount.toString().replace(/[^0-9]/g, '')) || 0);
+
+                        const desc = (normalizedRow['leírás'] || normalizedRow['leiras'] || normalizedRow['description'] || '-').toString().trim();
+
+                        if (amount > 0) {
+                            parsedImportData.push({
+                                id: Date.now() + Math.random(),
+                                date: formattedDate,
+                                type,
+                                category,
+                                amount,
+                                desc
+                            });
+                        }
+                    });
+
+                    renderImportPreview();
+                } catch (err) {
+                    console.error(err);
+                    showToast('Hiba a fájl feldolgozása során! Ellenőrizd a formátumot.', 'warning');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderImportPreview() {
+            const previewContainer = document.getElementById('import-preview-container');
+            const tbody = document.getElementById('import-preview-tbody');
+            const rowCountLabel = document.getElementById('import-row-count');
+            const validCountLabel = document.getElementById('import-valid-count');
+            const btnConfirm = document.getElementById('btn-confirm-import');
+
+            tbody.innerHTML = '';
+            if (parsedImportData.length === 0) {
+                showToast('Nem található érvényes tranzakció a fájlban!', 'warning');
+                previewContainer.classList.add('hidden');
+                btnConfirm.disabled = true;
+                return;
+            }
+
+            previewContainer.classList.remove('hidden');
+            btnConfirm.disabled = false;
+            rowCountLabel.textContent = `${parsedImportData.length} tétel beolvasva`;
+            validCountLabel.textContent = `Összesen: ${parsedImportData.reduce((acc, curr) => acc + curr.amount, 0).toLocaleString('hu-HU')} Ft`;
+
+            parsedImportData.forEach(tx => {
+                const tr = document.createElement('tr');
+                const isInc = tx.type === 'income';
+                tr.innerHTML = `
+                    <td class="p-2 font-mono text-[11px] text-slate-400">${tx.date}</td>
+                    <td class="p-2 font-semibold ${isInc ? 'text-emerald-400' : 'text-amber-400'}">${isInc ? 'Bevétel' : 'Kiadás'}</td>
+                    <td class="p-2 font-medium">${tx.category}</td>
+                    <td class="p-2 text-slate-400 truncate max-w-xs">${tx.desc}</td>
+                    <td class="p-2 text-right font-mono font-bold ${isInc ? 'text-emerald-400' : 'text-amber-400'}">${isInc ? '+' : '-'}${tx.amount.toLocaleString('hu-HU')} Ft</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function confirmBulkImport() {
+            if (parsedImportData.length === 0) return;
+            transactions = [...parsedImportData, ...transactions];
+            saveAndRender();
+            closeImportModal();
+            showToast(`${parsedImportData.length} db tranzakció sikeresen importálva!`);
+            parsedImportData = [];
+        }
+
+        function confirmResetData() {
+            transactions = [];
+            subscriptions = [];
+            saveAndRender();
+            closeResetModal();
+            showToast('Minden adat törölve lett.', 'warning');
+        }
+
+        function loadDemoData() {
+            const today = new Date().toISOString().split('T')[0];
+            transactions = [
+                { id: 1, date: today, type: 'income', category: 'Fizetés', amount: 550000, desc: 'Havi fő munkabér' },
+                { id: 2, date: today, type: 'income', category: 'Egyéb bevétel', amount: 50000, desc: 'Mellékes / Bónusz' },
+                { id: 3, date: today, type: 'expense', category: 'Lakbér / Törlesztő', amount: 180000, desc: 'Havi lakbér' },
+                { id: 4, date: today, type: 'expense', category: 'Rezsi', amount: 45000, desc: 'Közös költség & villany' },
+                { id: 5, date: today, type: 'expense', category: 'Előfizetés / Szoftver', amount: 27760, desc: 'Havi előfizetések (Netflix, Spotify, Cloud stb.)' },
+                { id: 6, date: today, type: 'expense', category: 'Élelmiszer', amount: 42000, desc: 'Bevásárlások' },
+                { id: 7, date: today, type: 'expense', category: 'Közlekedés / Tankolás', amount: 22000, desc: 'Tankolás' }
+            ];
+            subscriptions = DEFAULT_SUBSCRIPTIONS;
+            saveAndRender();
+            showToast('Demo adatok betöltve!');
+        }
+
+        function exportData() {
+            if (transactions.length === 0 && subscriptions.length === 0) {
+                showToast('Nincs exportálható adat!', 'warning');
+                return;
+            }
+            const exportObj = { transactions, subscriptions };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `havi_koltsegvetes_${new Date().toISOString().split('T')[0]}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            showToast('Adatok sikeresen exportálva JSON fájlba!');
+        }
+
+        function saveAndRender() {
+            localStorage.setItem('havi_koltseg_txs', JSON.stringify(transactions));
+            localStorage.setItem('havi_koltseg_subs', JSON.stringify(subscriptions));
+            render();
+        }
+
+        function formatHUF(val) {
+            return val.toLocaleString('hu-HU') + ' Ft';
+        }
+
+        function render() {
+            let totalIncome = 0;
+            let totalExpense = 0;
+            let incomeCount = 0;
+            const categoryTotals = {};
+
+            transactions.forEach(tx => {
+                if (tx.type === 'income') {
+                    totalIncome += tx.amount;
+                    incomeCount++;
+                } else if (tx.type === 'expense') {
+                    totalExpense += tx.amount;
+                    categoryTotals[tx.category] = (categoryTotals[tx.category] || 0) + tx.amount;
+                }
+            });
+
+            let activeSubsTotal = 0;
+            let activeSubsCount = 0;
+            subscriptions.forEach(sub => {
+                if (sub.active) {
+                    activeSubsTotal += sub.cost;
+                    activeSubsCount++;
+                }
+            });
+
+            // Update KPI Dashboard
+            document.getElementById('kpi-income').textContent = formatHUF(totalIncome);
+            document.getElementById('kpi-expense').textContent = formatHUF(totalExpense);
+            document.getElementById('kpi-income-count').textContent = `${incomeCount} db`;
+
+            const subSharePct = totalExpense > 0 ? ((activeSubsTotal / totalExpense) * 100).toFixed(1) : '0.0';
+            document.getElementById('kpi-sub-share-pct').textContent = `${subSharePct}%`;
+
+            const savings = totalIncome - totalExpense;
+            document.getElementById('kpi-savings').textContent = formatHUF(savings);
+
+            const savingsRate = totalIncome > 0 ? ((savings / totalIncome) * 100).toFixed(1) : '0.0';
+            document.getElementById('kpi-rate').textContent = `${savingsRate}%`;
+
+            document.getElementById('kpi-sub-total').textContent = formatHUF(activeSubsTotal);
+            document.getElementById('sub-active-badge').textContent = `${activeSubsCount} / ${subscriptions.length} aktív`;
+            document.getElementById('annual-sub-cost').textContent = formatHUF(activeSubsTotal * 12);
+
+            // Render Subscriptions List
+            const subsContainer = document.getElementById('subscriptions-container');
+            subsContainer.innerHTML = '';
+
+            if (subscriptions.length === 0) {
+                subsContainer.innerHTML = `<div class="col-span-2 text-slate-500 text-center py-4 text-xs italic">Nincs felvett előfizetés. Kattints az "Új előfizetés" gombra!</div>`;
+            } else {
+                subscriptions.forEach(sub => {
+                    const card = document.createElement('div');
+                    const isActive = sub.active;
+                    const borderStyle = isActive ? 'border-purple-500/40 bg-slate-900/90' : 'border-slate-800 bg-slate-900/40 opacity-60';
+                    const iconClass = sub.icon || 'fa-repeat';
+
+                    card.className = `p-3 rounded-xl border ${borderStyle} transition-all flex items-center justify-between gap-3`;
+                    card.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-lg ${isActive ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-500'} flex items-center justify-center text-sm">
+                                <i class="fa-solid ${iconClass}"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-xs text-slate-200 flex items-center gap-1.5">
+                                    ${sub.name}
+                                    ${!isActive ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-500 font-normal">Szüneteltetve</span>' : ''}
+                                </div>
+                                <div class="text-[10px] text-slate-400">Levonás: ${sub.day}. napja · <span class="text-slate-500">${sub.category}</span></div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-mono font-bold text-xs text-purple-300">${formatHUF(sub.cost)}</span>
+                            <button onclick="toggleSubscriptionStatus('${sub.id}')" title="${isActive ? 'Kikapcsolás' : 'Bekapcsolás'}" class="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-[10px] transition-colors">
+                                <i class="fa-solid ${isActive ? 'fa-pause text-amber-400' : 'fa-play text-emerald-400'}"></i>
+                            </button>
+                            <button onclick="deleteSubscription('${sub.id}')" title="Törlés" class="w-6 h-6 rounded-md bg-slate-800 hover:bg-red-900/40 text-slate-400 hover:text-red-300 flex items-center justify-center text-[10px] transition-colors">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    `;
+                    subsContainer.appendChild(card);
+                });
+            }
+
+            // Render Expense Breakdown
+            document.getElementById('total-expense-badge').textContent = `Összesen: ${formatHUF(totalExpense)}`;
+            const stackedBar = document.getElementById('stacked-expense-bar');
+            const breakdownContainer = document.getElementById('category-breakdown-container');
+            stackedBar.innerHTML = '';
+            breakdownContainer.innerHTML = '';
+
+            const categoriesArray = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+            document.getElementById('category-count-label').textContent = `${categoriesArray.length} kategória`;
+
+            if (categoriesArray.length === 0 || totalExpense === 0) {
+                stackedBar.innerHTML = `<div class="w-full bg-slate-800 text-[10px] text-slate-500 text-center py-0.5 rounded-full">Nincs rögzített kiadás</div>`;
+                breakdownContainer.innerHTML = `<div class="col-span-2 text-slate-500 text-center py-4 italic">Nincs megjeleníthető kiadási tétel.</div>`;
+            } else {
+                categoriesArray.forEach(([cat, amount], index) => {
+                    const color = CATEGORY_COLORS[index % CATEGORY_COLORS.length];
+                    const catPct = (amount / totalExpense) * 100;
+
+                    if (catPct > 0) {
+                        const segment = document.createElement('div');
+                        segment.style.width = `${catPct}%`;
+                        segment.style.backgroundColor = color;
+                        segment.className = 'h-full first:rounded-l-full last:rounded-r-full transition-all duration-500';
+                        segment.title = `${cat}: ${formatHUF(amount)} (${catPct.toFixed(1)}%)`;
+                        stackedBar.appendChild(segment);
+                    }
+
+                    const card = document.createElement('div');
+                    card.className = 'bg-slate-900/80 p-3 rounded-xl border border-slate-800/80 space-y-2';
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center text-[11px]">
+                            <span class="font-medium text-slate-200 flex items-center gap-1.5 truncate">
+                                <span class="w-2.5 h-2.5 rounded-full inline-block" style="background-color: ${color}"></span>
+                                ${cat}
+                            </span>
+                            <span class="font-mono font-bold text-slate-100">${formatHUF(amount)}</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            <div class="h-full rounded-full transition-all duration-500" style="width: ${catPct}%; background-color: ${color}"></div>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-slate-500">
+                            <span>A kiadásokból</span>
+                            <span class="font-semibold text-slate-300">${catPct.toFixed(1)}%</span>
+                        </div>
+                    `;
+                    breakdownContainer.appendChild(card);
+                });
+            }
+
+            // Filter & Search Table logic
+            const searchTerm = document.getElementById('table-search').value.toLowerCase();
+            const filterType = document.getElementById('table-filter').value;
+
+            const filteredTxs = transactions.filter(tx => {
+                const matchesSearch = tx.category.toLowerCase().includes(searchTerm) || 
+                                      tx.desc.toLowerCase().includes(searchTerm) ||
+                                      tx.amount.toString().includes(searchTerm);
+                const matchesFilter = filterType === 'all' || tx.type === filterType;
+                return matchesSearch && matchesFilter;
+            });
+
+            // Render table rows
+            const tableBody = document.getElementById('tx-table-body');
+            const emptyState = document.getElementById('empty-state');
+            tableBody.innerHTML = '';
+
+            if (filteredTxs.length === 0) {
+                emptyState.style.display = 'block';
+            } else {
+                emptyState.style.display = 'none';
+                filteredTxs.forEach(tx => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-slate-800/40 transition-colors border-b border-slate-800/40';
+                    
+                    const isInc = tx.type === 'income';
+                    const badgeBg = isInc ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+                    const amountColor = isInc ? 'text-emerald-400' : 'text-amber-400';
+                    const typeLabel = isInc ? 'Bevétel' : 'Kiadás';
+
+                    row.innerHTML = `
+                        <td class="py-3 px-3 text-slate-400 font-mono text-[11px]">${tx.date}</td>
+                        <td class="py-3 px-3">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeBg}">
+                                ${typeLabel}
+                            </span>
+                        </td>
+                        <td class="py-3 px-3 text-slate-200 font-medium">${tx.category}</td>
+                        <td class="py-3 px-3 text-slate-400 max-w-xs truncate text-[11px]">${tx.desc}</td>
+                        <td class="py-3 px-3 text-right font-mono font-bold ${amountColor}">
+                            ${isInc ? '+' : '-'}${formatHUF(tx.amount)}
+                        </td>
+                        <td class="py-3 px-3 text-center">
+                            <button onclick="deleteTransaction(${tx.id})" title="Törlés" class="w-7 h-7 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors inline-flex items-center justify-center">
+                                <i class="fa-solid fa-xmark text-xs"></i>
+                            </button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            document.getElementById('tx-count-label').textContent = `${transactions.length} tranzakció rögzítve (${filteredTxs.length} megjelenítve)`;
+        }
+
+        window.onload = function() {
+            updateCategories();
+            render();
+
+            const dropZone = document.getElementById('drop-zone');
+            if (dropZone) {
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    dropZone.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropZone.classList.add('border-emerald-400', 'bg-slate-900');
+                    }, false);
+                });
+
+                ['dragleave', 'drop'].forEach(eventName => {
+                    dropZone.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropZone.classList.remove('border-emerald-400', 'bg-slate-900');
+                    }, false);
+                });
+
+                dropZone.addEventListener('drop', (e) => {
+                    const dt = e.dataTransfer;
+                    const files = dt.files;
+                    if (files.length > 0) {
+                        processImportFile(files[0]);
+                    }
+                }, false);
+            }
+        };
+    </script>
+</body>
+</html>
