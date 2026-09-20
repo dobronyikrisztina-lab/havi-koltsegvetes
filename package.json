@@ -1,0 +1,7 @@
+{
+  "name": "havi-koltsegvetes",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Helyben működő személyes költségvetés Erste és Revolut importtal",
+  "scripts": {"start":"node server.cjs", "test":"node --test tests/*.test.cjs"}
+}
