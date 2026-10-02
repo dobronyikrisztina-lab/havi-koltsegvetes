@@ -38,6 +38,7 @@ th{background:#25211d;color:#dfb38e}td{border-bottom-color:#393129}td small,smal
 .category-hint{font-size:10px;color:var(--muted);margin:12px 0 0}
 .storage-status{color:#ffd198;font-weight:650;margin:7px 0;padding:7px 8px;border-left:2px solid #f69b42;background:#241e19;border-radius:0 5px 5px 0}
 .storage-status.warning{color:#ffad98;border-left-color:#ff8968;background:#2d201d}
+.account-badge{display:inline-block;white-space:nowrap;padding:5px 8px;border:1px solid #6f4b2e;border-radius:999px;background:#2d2118;color:#ffba7c;font-size:11px;font-weight:700}
 
 @media(max-width:750px){.category-summary{grid-template-columns:1fr}.donut-wrap{width:210px}}
 
