@@ -36,6 +36,8 @@ th{background:#25211d;color:#dfb38e}td{border-bottom-color:#393129}td small,smal
 .bar-row .track{grid-column:1/-1;height:7px}
 .bar-row .track>span{display:block;height:100%;max-width:100%;border-radius:8px;background:var(--category-color)}
 .category-hint{font-size:10px;color:var(--muted);margin:12px 0 0}
+.storage-status{color:#ffd198;font-weight:650;margin:7px 0;padding:7px 8px;border-left:2px solid #f69b42;background:#241e19;border-radius:0 5px 5px 0}
+.storage-status.warning{color:#ffad98;border-left-color:#ff8968;background:#2d201d}
 
 @media(max-width:750px){.category-summary{grid-template-columns:1fr}.donut-wrap{width:210px}}
 
