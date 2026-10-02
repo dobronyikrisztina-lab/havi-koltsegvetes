@@ -18,14 +18,14 @@ function date(value){
 function rows(items){const out=[];for(const item of [...items].sort((a,b)=>a.y-b.y||a.x-b.x)){let row=out.at(-1);if(!row||Math.abs(row.y-item.y)>2){row={y:item.y,items:[]};out.push(row);}row.items.push(item);}return out.map(r=>({...r,items:r.items.sort((a,b)=>a.x-b.x)}));}
 const txt=(r,a=-Infinity,b=Infinity)=>r.items.filter(i=>i.x>=a&&i.x<b).map(i=>i.text).join(' ').trim();
 const subscriptionPattern=/netflix|spotify|youtube|google (?:play|one)|microsoft|scribd|openai|chatgpt|claude|anthropic|apple\.com|icloud|disney|hbo|canva|simplep cloud/i;
-function classify(t){const s=norm(t.desc+' '+(t.bankCategory||''));if(/feltoltes|atvaltas|devizavaltas|sajat szamlarol/.test(s))return 'Belső pénzmozgás';if(subscriptionPattern.test(t.desc))return 'Előfizetés';if(t.amount>0)return /visszater|visszafiz/.test(s)?'Visszatérítés':'Bevétel';if(/lidl|aldi|kifli|spar|tesco|auchan|jonas|manna|pek|stud enac|studenac/.test(s))return 'Élelmiszer';if(/vinted|shein|dm |rossmann|regio/.test(s))return 'Vásárlás';if(/foxpost|gls|autoceste|mav|bkk|shell|mol /.test(s))return 'Közlekedés és szállítás';if(/dij|kamat/.test(s))return 'Banki díjak';if(/bar|etterem|kave|kantin/.test(s))return 'Vendéglátás';return 'Egyéb';}
+function classify(t){const s=norm(t.desc+' '+(t.bankCategory||''));if(/feltoltes|atvaltas|devizavaltas|sajat szamlarol|sajat szamlara/.test(s))return 'Belső pénzmozgás';if(subscriptionPattern.test(t.desc))return 'Előfizetés';if(t.amount>0)return /visszater|visszafiz/.test(s)?'Visszatérítés':'Bevétel';if(/lidl|aldi|kifli|spar|tesco|auchan|jonas|manna|pek|stud enac|studenac/.test(s))return 'Élelmiszer';if(/vinted|shein|dm |rossmann|regio/.test(s))return 'Vásárlás';if(/foxpost|gls|autoceste|mav|bkk|shell|mol /.test(s))return 'Közlekedés és szállítás';if(/dij|kamat/.test(s))return 'Banki díjak';if(/bar|etterem|kave|kantin/.test(s))return 'Vendéglátás';return 'Egyéb';}
 function parsePDF(pages){
- const all=pages.flat().map(i=>i.text).join(' '),bank=/HITELSZÁMLA FORGALOM/.test(all)?'Erste':/Revolut/.test(all)?'Revolut':null;
- if(!bank)throw Error('Nem támogatott kivonatformátum. Erste hitelkártya- vagy Revolut egyedi kivonat szükséges.');
+ const all=pages.flat().map(i=>i.text).join(' '),normalized=norm(all),kind=/HITELSZÁMLA FORGALOM/.test(all)?'credit':normalized.includes('bankszamla forgalmak')?'account':/Revolut/.test(all)?'revolut':null,bank=kind==='revolut'?'Revolut':kind?'Erste':null;
+ if(!bank)throw Error('Nem támogatott kivonatformátum. Erste bankszámla-, Erste hitelkártya- vagy Revolut egyedi kivonat szükséges.');
  const transactions=[],errors=[],checks=[],expected={},opening={};let pending=null,currency='HUF',summaryCurrency='HUF',active=false,account='';
  const iban=all.match(/HU\d{2}(?:\s*\d){24}/);account=bank+' '+(iban?iban[0].replace(/\s/g,'').slice(-8):'számla');
  function finish(){if(!pending)return;try{
-  const t=pending;if(bank==='Revolut'){
+  const t=pending;if(kind==='revolut'){
    const a=t.amountLines.join(' '),b=t.balanceLines.join(' ');const number='[+-]?[\\d \\u00a0]+,\\d{2}';
    const amountMatch=a.match(new RegExp('('+number+')\\s*'+(t.currency==='EUR'?'€':'HUF')));const balanceMatch=b.match(new RegExp('('+number+')\\s*'+(t.currency==='EUR'?'€':'HUF')));
    if(!amountMatch||!balanceMatch)throw Error('Hiányzó összeg vagy egyenleg');t.amount=money(amountMatch[1]);t.balance=money(balanceMatch[1]);
@@ -46,7 +46,7 @@ function parsePDF(pages){
   const lines=rows(pages[p]),pageText=lines.map(r=>txt(r)).join('\n');
   const section=pageText.match(/Személyes számla\s*\((HUF|EUR)\)/);if(section)summaryCurrency=section[1];
   for(const r of lines){const s=txt(r);if(/Nyitóegyenleg/.test(s)){try{opening[summaryCurrency]=money(s.replace(/^.*Nyitóegyenleg\s*/,''));}catch{}}}
-  if(bank==='Erste'){
+  if(kind==='credit'){
    if(!pageText.includes('HITELSZÁMLA FORGALOM'))continue;
    for(const r of lines){const s=txt(r);if(r.y<135||/^\d+\/\d+ oldal/.test(s))continue;
     if(/^Összes terhelés/.test(s)){finish();expected.expense=money(s.replace('Összes terhelés',''));continue;}
@@ -56,6 +56,21 @@ function parsePDF(pages){
     if(dates.length===1&&!transactions.length&&!pending&&txt(r,435,520)){opening.HUF=money(txt(r,435,520));continue;}
     if(dates.length===2){finish();try{pending={date:date(dates[1]),bookingDate:date(dates[0]),desc:txt(r,125,370),amount:money(txt(r,370,435)),balance:money(txt(r,435,520)),currency:'HUF',page:p+1,details:[]};}catch(e){errors.push(`${p+1}. oldal: ${e.message}`);} }
     else if(pending&&r.y<795){const d=txt(r,125,370);if(d)pending.details.push(d);}
+   }
+  }else if(kind==='account'){
+   if(!norm(pageText).includes('bankszamla forgalmak'))continue;
+   let table=false,headerY=-Infinity;
+   for(const r of lines){const s=txt(r),n=norm(s);
+    if(n.includes('konyveles')&&n.includes('erteknap')&&n.includes('osszeg')){table=true;headerY=r.y;continue;}
+    if(!table||r.y<=headerY+8)continue;
+    if(/^osszes terheles/.test(n)){finish();expected.expense=money(s.replace(/^.*?terhelés/i,''));continue;}
+    if(/^osszes jovairas/.test(n)){expected.income=money(s.replace(/^.*?jóváírás/i,''));continue;}
+    if(/^zaro egyenleg/.test(n)){finish();expected.close=money(s.replace(/^.*?egyenleg/i,''));continue;}
+    if(/^zarolasok es/.test(n)){finish();table=false;continue;}
+    const dates=txt(r,0,125).match(/\d{4}\.\d{2}\.\d{2}\./g)||[];
+    if(dates.length===1&&!transactions.length&&!pending&&txt(r,448,501)){opening.HUF=money(txt(r,448,501));continue;}
+    if(dates.length===2){finish();try{pending={date:date(dates[1]),bookingDate:date(dates[0]),desc:txt(r,125,326),amount:money(txt(r,382,448)),balance:money(txt(r,448,501)),currency:'HUF',page:p+1,details:[]};}catch(e){errors.push(`${p+1}. oldal: ${e.message}`);} }
+    else if(pending&&r.y<795){const d=txt(r,125,382);if(d)pending.details.push(d);}
    }
   }else{
    const header=pages[p].find(i=>i.text==='Dátum'),description=pages[p].find(i=>i.text==='Leírás'),cat=pages[p].find(i=>i.text==='Kategória'),amount=pages[p].find(i=>i.text==='Pénz be-'),bal=pages[p].find(i=>i.text==='Egyenleg'),tax=pages[p].find(i=>i.text==='Általad');
@@ -72,8 +87,8 @@ function parsePDF(pages){
  }
  finish();
  function check(label,actual,want){const ok=Number.isFinite(want)&&Math.abs(round(actual-want))<0.011;checks.push({label,actual:round(actual),expected:want,ok});if(!ok)errors.push(label+': az összeg nem egyezik a kivonattal.');}
- for(const c of [...new Set(transactions.map(t=>t.currency))]){const ts=transactions.filter(t=>t.currency===c);let prev=opening[c];if(prev===undefined)errors.push('Hiányzó nyitóegyenleg: '+c);let mismatches=0;for(const t of ts){if(prev!==undefined&&Math.abs(round(prev+t.amount-t.balance))>0.011)mismatches++;prev=t.balance;}checks.push({label:`${c}: ${ts.length} tétel egyenleglánca`,ok:!mismatches&&opening[c]!==undefined});if(mismatches)errors.push(`${c}: ${mismatches} tételnél eltér az egyenleg.`);if(bank==='Revolut')check(c+' végösszeg',ts.reduce((s,t)=>s+t.amount,0),expected[c]);}
- if(bank==='Erste'){check('Összes terhelés',transactions.reduce((s,t)=>s+Math.max(0,-t.amount),0),expected.expense);check('Összes jóváírás',transactions.reduce((s,t)=>s+Math.max(0,t.amount),0),expected.income);check('Záró egyenleg',(opening.HUF||0)+transactions.reduce((s,t)=>s+t.amount,0),expected.close);}
+ for(const c of [...new Set(transactions.map(t=>t.currency))]){const ts=transactions.filter(t=>t.currency===c);let prev=opening[c];if(prev===undefined)errors.push('Hiányzó nyitóegyenleg: '+c);let mismatches=0;for(const t of ts){if(prev!==undefined&&Math.abs(round(prev+t.amount-t.balance))>0.011)mismatches++;prev=t.balance;}checks.push({label:`${c}: ${ts.length} tétel egyenleglánca`,ok:!mismatches&&opening[c]!==undefined});if(mismatches)errors.push(`${c}: ${mismatches} tételnél eltér az egyenleg.`);if(kind==='revolut')check(c+' végösszeg',ts.reduce((s,t)=>s+t.amount,0),expected[c]);}
+ if(kind==='credit'||kind==='account'){check('Összes terhelés',transactions.reduce((s,t)=>s+Math.max(0,-t.amount),0),expected.expense);check('Összes jóváírás',transactions.reduce((s,t)=>s+Math.max(0,t.amount),0),expected.income);check('Záró egyenleg',(opening.HUF||0)+transactions.reduce((s,t)=>s+t.amount,0),expected.close);}
  if(!transactions.length)errors.push('Nem található feldolgozható tranzakció.');
  return {bank,transactions,checks,errors};
 }
@@ -81,3 +96,4 @@ function key(t){return JSON.stringify([t.account||t.bank||'',t.currency||'HUF',t
 function merge(existing,incoming){const counts=new Map();for(const t of existing)counts.set(key(t),(counts.get(key(t))||0)+1);const seen=new Map(),added=[];let duplicates=0;for(const t of incoming){const k=key(t),n=(seen.get(k)||0)+1;seen.set(k,n);if(n<=(counts.get(k)||0))duplicates++;else added.push(t);}return {added,duplicates};}
 const api={money,date,rows,parsePDF,round,norm,classify,key,merge,subscriptionPattern};if(typeof module!=='undefined')module.exports=api;root.BudgetCore=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
+
